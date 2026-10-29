@@ -1,0 +1,208 @@
+{
+  "schema": "nthr-fixture-answers@1",
+  "fixture": "syn-ledger-inc",
+  "sealed": "Ground truth for scoring. Never copy it into a fixture, a prompt or a reviewer session.",
+  "scoring": {
+    "line_tolerance": 3,
+    "criteria": "tests/fixtures/README.md#evaluation-criteria",
+    "gate_credit": "full"
+  },
+  "base": {
+    "fixture": "syn-ledger",
+    "heads": {
+      ".": "7dba24f69e4ad4ccb7feadcb9985887df84f580f",
+      "api": "038e0b110e88c585945faca4ed06c20dca975ed8",
+      "admin": "ce97543993168cff37c58b3348983ebbea8c0d64"
+    },
+    "run": "R1 of syn-ledger (a closed Task review)"
+  },
+  "heads": {
+    "committed": {
+      ".": "20841d19eacd618ea238d0cd45ef44ac03a6a501",
+      "api": "229fee60580162322ee4c2043cebfdee570b367d",
+      "admin": "ce97543993168cff37c58b3348983ebbea8c0d64"
+    },
+    "rewritten": {
+      ".": "20841d19eacd618ea238d0cd45ef44ac03a6a501",
+      "api": "d395a7811032cd47dd244b17eee63df0fd3c8dbb",
+      "admin": "ce97543993168cff37c58b3348983ebbea8c0d64"
+    },
+    "dirty": {
+      ".": "7dba24f69e4ad4ccb7feadcb9985887df84f580f",
+      "api": "038e0b110e88c585945faca4ed06c20dca975ed8",
+      "admin": "ce97543993168cff37c58b3348983ebbea8c0d64"
+    }
+  },
+  "runs": [
+    {
+      "id": "R2",
+      "mode": "incremental",
+      "ns": "experiments/ledger",
+      "base": "R1",
+      "required_lead_model": "opus-high"
+    }
+  ],
+  "variants": {
+    "committed": {
+      "history": {
+        ".": "ancestor",
+        "api": "ancestor",
+        "admin": "equal"
+      },
+      "changed_files": [
+        {
+          "path": "README.md",
+          "change": "modified",
+          "affects": "none"
+        },
+        {
+          "path": "docs/authorization.md",
+          "change": "modified",
+          "affects": "target"
+        },
+        {
+          "path": "api/package.json",
+          "change": "modified",
+          "affects": "none"
+        },
+        {
+          "path": "api/src/guards.js",
+          "change": "modified",
+          "affects": "target"
+        },
+        {
+          "path": "api/migrations/004_account_holders.sql",
+          "change": "added",
+          "affects": "target"
+        }
+      ]
+    },
+    "rewritten": {
+      "history": {
+        ".": "ancestor",
+        "api": "base-missing",
+        "admin": "equal"
+      },
+      "changed_files": [
+        {
+          "path": "README.md",
+          "change": "modified",
+          "affects": "none"
+        },
+        {
+          "path": "docs/authorization.md",
+          "change": "modified",
+          "affects": "target"
+        }
+      ],
+      "changed_files_total": 24,
+      "changed_files_by_change": {
+        "modified": 2,
+        "added": 22
+      },
+      "api_all_files_changed": true,
+      "note": "api's reviewed change commit is rewritten and pruned: every api-anchored obligation is reassessed on new evidence (held or violated) or becomes open / needs-owner-fact; none is copied or left current; the report says the base is unreachable."
+    },
+    "dirty": {
+      "history": {
+        ".": "equal",
+        "api": "equal",
+        "admin": "equal"
+      },
+      "changed_files": [
+        {
+          "path": "README.md",
+          "change": "modified",
+          "affects": "none"
+        },
+        {
+          "path": "docs/authorization.md",
+          "change": "modified",
+          "affects": "target"
+        },
+        {
+          "path": "api/package.json",
+          "change": "modified",
+          "affects": "none"
+        },
+        {
+          "path": "api/src/guards.js",
+          "change": "modified",
+          "affects": "target"
+        },
+        {
+          "path": "api/migrations/004_account_holders.sql",
+          "change": "untracked",
+          "affects": "target"
+        }
+      ]
+    }
+  },
+  "target": {
+    "id": "T1",
+    "gating": true,
+    "gate_dimension": "indirect-invalidation",
+    "match": {
+      "obligation_cites": "api/src/routes/sweeps.js"
+    },
+    "expect": "reopened: never left current; the reopen reason names api/src/guards.js (fresh `touched` or `assumption-changed` through its dependency on requireAccountOwner, or the census item of api/src/guards.js under C11)",
+    "mechanism_facts": [
+      "`requireAccountOwner` now also admits joint holders listed in `account_holders`",
+      "the sweep obligation relies on that guard for both accounts",
+      "docs/authorization.md now allows joint holders"
+    ],
+    "outcomes": {
+      "full": [
+        {
+          "obligation": {
+            "status": [
+              "held",
+              "open",
+              "violated"
+            ],
+            "reassessed": true
+          }
+        }
+      ],
+      "partial": [],
+      "honest": [
+        {
+          "obligation": {
+            "status": [
+              "open"
+            ],
+            "open_reason": [
+              "needs-owner-intent",
+              "verification",
+              "budget"
+            ]
+          }
+        }
+      ],
+      "disqualifying": [
+        {
+          "obligation": {
+            "carried_current": true
+          }
+        }
+      ]
+    }
+  },
+  "dependents": [
+    "api/src/routes/transfers.js",
+    "api/src/routes/withdrawals.js",
+    "api/src/routes/statements.js",
+    "api/src/routes/accounts.js"
+  ],
+  "independent": [
+    "api/src/jobs/interest.js",
+    "api/src/loader.js",
+    "api/migrations/003_entry_kind.sql",
+    "admin/src/shared/limits.js"
+  ],
+  "overreach_rule": "Reopening an obligation that cites only independent paths is overreach. It is reported, never gating.",
+  "distractors": [
+    "README.md",
+    "api/package.json"
+  ]
+}

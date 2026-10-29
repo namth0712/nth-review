@@ -1,0 +1,13 @@
+{
+  "name": "nth-review",
+  "version": "1.0.0-rc.2",
+  "description": "Manual, evidence-based code review for Claude Code (release candidate; Flow Review is Beta). Installs inactive: enable the plugin, run /nth-review:project enable in a project, then type /nth-review to review.",
+  "author": { "name": "namth0712", "url": "https://github.com/namth0712" },
+  "homepage": "https://github.com/namth0712/nth-review",
+  "repository": "https://github.com/namth0712/nth-review",
+  "license": "MIT",
+  "keywords": ["code-review", "review", "claude-code"],
+  "defaultEnabled": false,
+  "skills": ["./plugin-skills/"],
+  "agents": ["./plugin-agents/reviewer.md"]
+}

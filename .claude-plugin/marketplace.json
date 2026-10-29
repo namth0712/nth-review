@@ -1,0 +1,16 @@
+{
+  "name": "nth-review",
+  "description": "The nth-review plugin, from its own repository.",
+  "owner": { "name": "namth0712", "url": "https://github.com/namth0712" },
+  "plugins": [
+    {
+      "name": "nth-review",
+      "source": "./",
+      "description": "Manual, evidence-based code review for Claude Code. Installs inactive; enable it per project with /nth-review:project enable.",
+      "author": { "name": "namth0712", "url": "https://github.com/namth0712" },
+      "homepage": "https://github.com/namth0712/nth-review",
+      "repository": "https://github.com/namth0712/nth-review",
+      "license": "MIT"
+    }
+  ]
+}

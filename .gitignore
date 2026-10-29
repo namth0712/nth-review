@@ -1,0 +1,13 @@
+# Never published: the sealed G5 evidence that records the environment it was
+# produced in, the owner's private terms, and the exact originals of the
+# documents redacted for publication (docs/DEVELOPMENT.md). The files stay
+# byte-identical on the owner's machine. tests/tools/public-check.mjs requires
+# this list to equal its own.
+/tests/fixtures/g5-ledger.jsonl
+/tests/fixtures/g5-evidence-m5t4.json
+/tests/fixtures/g5-criteria/
+/tests/fixtures/*/adjudications/
+/tests/fixtures/*/reports/
+/tests/fixtures/*/history/
+/tests/tools/private.json
+/private/

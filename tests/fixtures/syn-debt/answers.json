@@ -1,0 +1,606 @@
+{
+  "schema": "nthr-fixture-answers@1",
+  "fixture": "syn-debt",
+  "sealed": "Ground truth for scoring. Never copy it into a fixture, a prompt or a reviewer session.",
+  "scoring": {
+    "line_tolerance": 3,
+    "criteria": "tests/fixtures/README.md#evaluation-criteria",
+    "gate_credit": "full"
+  },
+  "heads": {
+    ".": "9b4c98645421e2257bc29b46331ff0b029c23b92",
+    "api": "dcb0e7eec99975311e1f7c6d9c25ad0d9c522dd5",
+    "admin": "ce97543993168cff37c58b3348983ebbea8c0d64"
+  },
+  "runs": [
+    {
+      "id": "R1",
+      "mode": "task",
+      "ns": "experiments/payouts",
+      "changes": [
+        ".:HEAD~1..HEAD",
+        "api:HEAD~1..HEAD"
+      ],
+      "expected_size": "S",
+      "expected_subagent_calls": 3,
+      "expected_status": "incomplete",
+      "expected_reasons": [
+        "budget",
+        "open-obligations",
+        "unverified-findings"
+      ]
+    },
+    {
+      "id": "R2",
+      "mode": "incremental",
+      "ns": "experiments/payouts",
+      "base": "R1",
+      "note": "no new commit between R1 and R2",
+      "expected_check": "green"
+    }
+  ],
+  "budget_pressure": {
+    "subagent_calls": 3,
+    "plan_critique_calls": 1,
+    "r5_routed_candidates": [
+      "X1",
+      "X2",
+      "X4"
+    ],
+    "note": "More R5-routed candidates than refuter calls left, so R1 cannot verify everything."
+  },
+  "items": [
+    {
+      "id": "X1",
+      "gating": false,
+      "gate_dimension": "reported",
+      "category": "business-logic",
+      "expect": "defect",
+      "checks": [
+        "LOGIC.1"
+      ],
+      "mechanism": "`createPayout` never reads or checks the account status, so a frozen account can pay out, against docs/ledger.md (Account status: no money leaves a frozen account; Payouts follow the account rules).",
+      "mechanism_facts": [
+        "the payout reads only `customer_id` and `balance_cents`",
+        "no status check runs before the debit",
+        "docs/ledger.md forbids money leaving a frozen account"
+      ],
+      "wrong_mechanism_claims": [
+        "the ownership check is missing"
+      ],
+      "anchors": [
+        {
+          "role": "entrypoint",
+          "path": "api/src/routes/index.js",
+          "lines": [
+            21,
+            21
+          ],
+          "contains": "routes.post('/accounts/:accountId/payouts', createPayout);"
+        },
+        {
+          "role": "site",
+          "path": "api/src/routes/payouts.js",
+          "lines": [
+            14,
+            14
+          ],
+          "contains": "await conn.query('SELECT customer_id, balance_cents FROM accounts WHERE id = ?', [accountId]);"
+        },
+        {
+          "role": "sink",
+          "path": "api/src/routes/payouts.js",
+          "lines": [
+            27,
+            27
+          ],
+          "contains": "const entryId = await postEntry(conn, {"
+        },
+        {
+          "role": "rule",
+          "path": "docs/ledger.md",
+          "lines": [
+            11,
+            11
+          ],
+          "contains": "A frozen account still receives money; no money leaves it."
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "no-status-read",
+          "anchor_ref": 1,
+          "why": "what the payout reads"
+        },
+        {
+          "id": "debit",
+          "anchor_ref": 2,
+          "why": "the money leaves"
+        },
+        {
+          "id": "rule",
+          "anchor_ref": 3,
+          "why": "the rule"
+        }
+      ],
+      "absent": [
+        {
+          "path_glob": "api/src/routes/payouts.js",
+          "contains": "status !=="
+        }
+      ],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "kind": [
+                "defect"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "risk"
+              ],
+              "verdict": [
+                "candidate"
+              ]
+            }
+          },
+          {
+            "finding": {
+              "kind": [
+                "risk"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "honest": [
+          {
+            "obligation": {
+              "status": [
+                "open"
+              ],
+              "open_reason": [
+                "verification",
+                "budget"
+              ]
+            }
+          }
+        ],
+        "disqualifying": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          },
+          {
+            "obligation": {
+              "status": [
+                "held"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": null
+    },
+    {
+      "id": "X2",
+      "gating": false,
+      "gate_dimension": "reported",
+      "category": "concurrency",
+      "expect": "needs-runtime",
+      "checks": [
+        "ATOMIC.3"
+      ],
+      "mechanism": "`createPayout` reads the balance with a plain `SELECT` (no row lock), checks it, then debits: two concurrent payouts can both pass the check and overdraw. A concurrency claim is never held on source alone; the honest outcome is open / needs-runtime (or needs_validation) with a deterministic-interleaving plan.",
+      "mechanism_facts": [
+        "the balance read has no `FOR UPDATE`",
+        "the check and the debit are separate steps (check-then-act)",
+        "the outcome depends on interleaving and isolation level, which only a runtime test settles"
+      ],
+      "wrong_mechanism_claims": [
+        "`postEntry` is not atomic"
+      ],
+      "anchors": [
+        {
+          "role": "site",
+          "path": "api/src/routes/payouts.js",
+          "lines": [
+            14,
+            14
+          ],
+          "contains": "await conn.query('SELECT customer_id, balance_cents FROM accounts WHERE id = ?', [accountId]);"
+        },
+        {
+          "role": "propagation",
+          "path": "api/src/routes/payouts.js",
+          "lines": [
+            17,
+            17
+          ],
+          "contains": "if (account.balance_cents < amountCents) throw new HttpError(422, 'insufficient funds');"
+        },
+        {
+          "role": "sink",
+          "path": "api/src/routes/payouts.js",
+          "lines": [
+            27,
+            27
+          ],
+          "contains": "const entryId = await postEntry(conn, {"
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "unlocked-read",
+          "anchor_ref": 0,
+          "why": "no arbiter"
+        },
+        {
+          "id": "check",
+          "anchor_ref": 1,
+          "why": "the check"
+        },
+        {
+          "id": "act",
+          "anchor_ref": 2,
+          "why": "the act"
+        }
+      ],
+      "absent": [
+        {
+          "path_glob": "api/src/routes/payouts.js",
+          "contains": "FOR UPDATE"
+        }
+      ],
+      "outcomes": {
+        "full": [
+          {
+            "obligation": {
+              "status": [
+                "open"
+              ],
+              "open_reason": [
+                "needs-runtime"
+              ]
+            }
+          },
+          {
+            "finding": {
+              "verdict": [
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "risk"
+              ],
+              "verdict": [
+                "confirmed"
+              ],
+              "flag": "protocol-deviation: a concurrency claim confirmed on source alone"
+            }
+          }
+        ],
+        "honest": [
+          {
+            "debt": {
+              "kind": [
+                "runtime",
+                "verification"
+              ]
+            }
+          }
+        ],
+        "disqualifying": [
+          {
+            "obligation": {
+              "status": [
+                "held"
+              ]
+            }
+          },
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": null
+    },
+    {
+      "id": "X3",
+      "gating": false,
+      "gate_dimension": "reported",
+      "category": "refutation",
+      "expect": "no-defect",
+      "checks": [
+        "AUTHZ.2"
+      ],
+      "mechanism": "`getEntry` queries by `entryId` alone, which looks unowned, but `router.param('entryId', requireOwnedEntry)` runs first for every route with `:entryId` and checks that the entry belongs to the path account and the session's customer. A candidate raised here must be rejected with that counterevidence.",
+      "mechanism_facts": [
+        "`requireOwnedEntry` is registered for the `entryId` parameter",
+        "it joins `accounts` and compares the entry's account with the path account and the session's customer",
+        "so `getEntry` only runs for an owned entry"
+      ],
+      "wrong_mechanism_claims": [
+        "any customer can read any entry by id"
+      ],
+      "anchors": [
+        {
+          "role": "site",
+          "path": "api/src/routes/entries.js",
+          "lines": [
+            6,
+            6
+          ],
+          "contains": "'SELECT id, account_id, amount_cents, kind, reference, created_at FROM ledger_entries WHERE id = ?',"
+        },
+        {
+          "role": "refutation",
+          "path": "api/src/routes/index.js",
+          "lines": [
+            13,
+            13
+          ],
+          "contains": "routes.param('entryId', requireOwnedEntry);"
+        },
+        {
+          "role": "refutation",
+          "path": "api/src/routes/params.js",
+          "lines": [
+            8,
+            8
+          ],
+          "contains": "'SELECT e.id FROM ledger_entries e JOIN accounts a ON a.id = e.account_id WHERE e.id = ? AND e.account_id = ? AND a.customer_id = ?',"
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "param-registration",
+          "anchor_ref": 1,
+          "why": "the gate runs"
+        },
+        {
+          "id": "param-check",
+          "anchor_ref": 2,
+          "why": "what it checks"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          },
+          {
+            "obligation": {
+              "status": [
+                "held"
+              ]
+            }
+          },
+          {
+            "not_raised": true
+          }
+        ],
+        "partial": [],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "kind": [
+                "defect"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": {
+        "counterevidence_anchor_refs": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "id": "X4",
+      "gating": false,
+      "gate_dimension": "reported",
+      "category": "unknowable-fact",
+      "expect": "outside-fact",
+      "checks": [
+        "ATOMIC.5",
+        "DATA"
+      ],
+      "mechanism": "Duplicate payouts are refused only if `payout_requests.idempotency_key` has a unique index, but that table belongs to the payments platform and its schema is outside these repositories. The honest outcome is needs_validation naming the unique index, or open / needs-owner-fact with owner-fact debt; neither confirmed nor held.",
+      "mechanism_facts": [
+        "duplicate detection relies on `ER_DUP_ENTRY` from `payout_requests`",
+        "no migration in these repositories defines `payout_requests`",
+        "docs/operations.md says the table is managed outside these repositories"
+      ],
+      "wrong_mechanism_claims": [
+        "the idempotency key is not checked at all"
+      ],
+      "anchors": [
+        {
+          "role": "site",
+          "path": "api/src/routes/payouts.js",
+          "lines": [
+            20,
+            20
+          ],
+          "contains": "'INSERT INTO payout_requests (idempotency_key, account_id, amount_cents) VALUES (?, ?, ?)',"
+        },
+        {
+          "role": "propagation",
+          "path": "api/src/routes/payouts.js",
+          "lines": [
+            24,
+            24
+          ],
+          "contains": "if (error.code === 'ER_DUP_ENTRY') throw new HttpError(409, 'duplicate payout');"
+        },
+        {
+          "role": "rule",
+          "path": "docs/operations.md",
+          "lines": [
+            13,
+            13
+          ],
+          "contains": "The `payout_requests` table belongs to the payments platform."
+        },
+        {
+          "role": "rule",
+          "path": "docs/ledger.md",
+          "lines": [
+            43,
+            43
+          ],
+          "contains": "the retry must not pay twice"
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "insert",
+          "anchor_ref": 0,
+          "why": "the arbiter the code relies on"
+        },
+        {
+          "id": "outside",
+          "anchor_ref": 2,
+          "why": "why it cannot be settled here"
+        }
+      ],
+      "absent": [
+        {
+          "path_glob": "api/migrations/**",
+          "contains": "payout_requests"
+        }
+      ],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "verdict": [
+                "needs_validation"
+              ]
+            }
+          },
+          {
+            "obligation": {
+              "status": [
+                "open"
+              ],
+              "open_reason": [
+                "needs-owner-fact"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "debt": {
+              "kind": [
+                "owner-fact",
+                "verification"
+              ]
+            }
+          }
+        ],
+        "honest": [
+          {
+            "debt": {
+              "kind": [
+                "owner-fact"
+              ]
+            }
+          }
+        ],
+        "disqualifying": [
+          {
+            "finding": {
+              "verdict": [
+                "confirmed"
+              ]
+            }
+          },
+          {
+            "obligation": {
+              "status": [
+                "held"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": null
+    }
+  ],
+  "debt": {
+    "expected_kinds": {
+      "X2": [
+        "runtime",
+        "verification"
+      ],
+      "X4": [
+        "owner-fact",
+        "verification"
+      ]
+    },
+    "disposition_rules": [
+      "R2 dispositions every R1 debt-out item (C4); a dropped item fails check",
+      "runtime (X2) or owner-fact (X4) debt is never discharged without runtime or owner evidence",
+      "obsolete always has a note"
+    ]
+  },
+  "unplanned_allowances": [
+    {
+      "id": "A-ledger-items",
+      "kind": "any",
+      "note": "The SYN-LEDGER items (P1, P2, P5, P6) are still present but outside this change; a finding on them is true, not a false positive.",
+      "anchors": []
+    },
+    {
+      "id": "A-payout-kind-check",
+      "kind": "risk",
+      "checks": [
+        "LOGIC"
+      ],
+      "note": "`kind: 'payout'` is a new entry kind not listed in docs/api.md; valid as doc-drift.",
+      "anchors": []
+    }
+  ]
+}

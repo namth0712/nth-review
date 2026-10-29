@@ -1,0 +1,993 @@
+{
+  "schema": "nthr-fixture-answers@1",
+  "fixture": "syn-shelf",
+  "sealed": "Ground truth for scoring. Never copy it into a fixture, a prompt or a reviewer session.",
+  "scoring": {
+    "line_tolerance": 3,
+    "criteria": "tests/fixtures/README.md#evaluation-criteria",
+    "gate_credit": "full",
+    "g5": {
+      "purpose": "Sonnet vs Opus High lead on one eligible, untriggered Task S fixture (owner decision 1, M5-T4). Pre-registered before any run.",
+      "must_find": [
+        "E1",
+        "E2"
+      ],
+      "four": [
+        "E1",
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "min_of_four": 3,
+      "controls": [
+        "EN1",
+        "EN2"
+      ],
+      "max_other_false_confirmed": 1,
+      "min_precision": 0.8,
+      "decision": "Sonnet keeps the Task S no-trigger row of routing.md only if every Sonnet run meets every threshold above. Otherwise the row moves to Opus High (a follow-up that changes runs.mjs)."
+    }
+  },
+  "heads": {
+    ".": "be0a9de2210fdc802a29151406fffaf4eed70f53"
+  },
+  "runs": [
+    {
+      "id": "R1",
+      "mode": "task",
+      "ns": "experiments/shelf",
+      "changes": [
+        ".:HEAD~1..HEAD"
+      ],
+      "expected_size": "S",
+      "required_lead_model": "sonnet",
+      "expected_triggers": [],
+      "triggers_absent": {
+        "authorization": "single-user local tool: no accounts, sessions, roles or ownership checks",
+        "money": "no prices, balances or payments",
+        "schema-migration": "no database and no change to the stored JSON shape; the change writes existing fields only",
+        "concurrency": "synchronous command-line process; docs/shelf.md: one command runs at a time; the event bus calls listeners synchronously",
+        "boundary-contract": "one repository; plugins live in the same repository, and the change adds no new event name, payload or interface (it emits an existing event from a second place)",
+        "ai-dispatch": "no model calls",
+        "task-size": "8 files, 75 changed lines (Task S: at most 15 files and 400 lines)"
+      }
+    }
+  ],
+  "items": [
+    {
+      "id": "E1",
+      "gating": true,
+      "gate_dimension": "model-comparison",
+      "category": "business-logic",
+      "expect": "defect",
+      "checks": [
+        "LOGIC.2",
+        "LOGIC.3"
+      ],
+      "mechanism": "`progress` finishes a book only when the requested page is greater than the page count, so a progress update to exactly the last page leaves the book unfinished, against docs/shelf.md (a book is finished when its current page reaches its page count).",
+      "mechanism_facts": [
+        "the finish check compares the requested page with the page count using `>`",
+        "a progress update to exactly the last page leaves the book unfinished",
+        "docs/shelf.md says a book is finished when its current page reaches its page count"
+      ],
+      "wrong_mechanism_claims": [
+        "the page is not clamped to the page count"
+      ],
+      "anchors": [
+        {
+          "role": "entrypoint",
+          "path": "src/commands/index.js",
+          "lines": [
+            12,
+            12
+          ],
+          "contains": "progress,"
+        },
+        {
+          "role": "site",
+          "path": "src/commands/progress.js",
+          "lines": [
+            20,
+            20
+          ],
+          "contains": "if (page > book.pages) {"
+        },
+        {
+          "role": "rule",
+          "path": "docs/shelf.md",
+          "lines": [
+            18,
+            18
+          ],
+          "contains": "A book is finished when its current page reaches its page count."
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "finish-check",
+          "anchor_ref": 1,
+          "why": "the comparison"
+        },
+        {
+          "id": "rule",
+          "anchor_ref": 2,
+          "why": "the rule"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "doc-drift"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "risk"
+              ],
+              "verdict": [
+                "candidate"
+              ]
+            }
+          },
+          {
+            "finding": {
+              "kind": [
+                "risk"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "E2",
+      "gating": true,
+      "gate_dimension": "model-comparison",
+      "category": "derived-state",
+      "expect": "defect",
+      "checks": [
+        "LOGIC.7",
+        "LOGIC.2"
+      ],
+      "mechanism": "`progress` calls `recordFinish` for every update past the last page without checking `finishedAt`, and every `book.finished` event reaches the unchanged stats listener registered in src/plugins/index.js, which adds one to `finishedCount`; a book already finished is counted again, against docs/shelf.md (each book counts once; a book is finished once). The same missing guard also overwrites the finishing day of a finished book.",
+      "mechanism_facts": [
+        "`recordFinish` runs for every progress update past the last page, without checking `finishedAt`",
+        "every `book.finished` event reaches the stats listener registered in src/plugins/index.js, which adds one to `finishedCount`",
+        "a later progress update past the last page counts an already finished book again, against docs/shelf.md"
+      ],
+      "wrong_mechanism_claims": [
+        "the listener is registered more than once"
+      ],
+      "anchors": [
+        {
+          "role": "entrypoint",
+          "path": "src/commands/index.js",
+          "lines": [
+            12,
+            12
+          ],
+          "contains": "progress,"
+        },
+        {
+          "role": "site",
+          "path": "src/commands/progress.js",
+          "lines": [
+            31,
+            31
+          ],
+          "contains": "bus.emit('book.finished', book);"
+        },
+        {
+          "role": "propagation",
+          "path": "src/plugins/index.js",
+          "lines": [
+            5,
+            5
+          ],
+          "contains": "bus.on('book.finished', () => recordFinished(store));"
+        },
+        {
+          "role": "sink",
+          "path": "src/plugins/stats.js",
+          "lines": [
+            3,
+            3
+          ],
+          "contains": "store.data.stats.finishedCount += 1;"
+        },
+        {
+          "role": "rule",
+          "path": "docs/shelf.md",
+          "lines": [
+            25,
+            25
+          ],
+          "contains": "The finished total counts each book once, however its finishing was recorded."
+        },
+        {
+          "role": "propagation",
+          "path": "src/commands/progress.js",
+          "lines": [
+            20,
+            21
+          ],
+          "contains": "recordFinish(book);"
+        },
+        {
+          "role": "propagation",
+          "path": "src/commands/progress.js",
+          "lines": [
+            26,
+            27
+          ],
+          "contains": "book.finishedAt = today();"
+        },
+        {
+          "role": "rule",
+          "path": "docs/shelf.md",
+          "lines": [
+            12,
+            12
+          ],
+          "contains": "A book is finished once. Finishing it again is refused."
+        },
+        {
+          "role": "rule",
+          "path": "docs/shelf.md",
+          "lines": [
+            19,
+            19
+          ],
+          "contains": "Progress on a finished book changes its page only: the book stays finished."
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "emit",
+          "anchor_ref": 1,
+          "why": "the event is emitted again"
+        },
+        {
+          "id": "counter",
+          "anchor_ref": 3,
+          "why": "the listener counts it"
+        },
+        {
+          "id": "rule",
+          "why": "the rule (any of the three)",
+          "anchor_refs": [
+            4,
+            7,
+            8
+          ]
+        }
+      ],
+      "absent": [
+        {
+          "path_glob": "src/commands/progress.js",
+          "contains": "if (book.finishedAt"
+        }
+      ],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "doc-drift"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "risk"
+              ],
+              "verdict": [
+                "candidate"
+              ]
+            }
+          },
+          {
+            "finding": {
+              "kind": [
+                "risk"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "E3",
+      "gating": true,
+      "gate_dimension": "model-comparison",
+      "category": "business-logic",
+      "expect": "defect",
+      "checks": [
+        "LOGIC.3",
+        "ARCH.3"
+      ],
+      "mechanism": "`list --sort progress` sorts by pages read (`currentPage`), not by progress as a share of the page count, so books of different lengths are not ordered by percent, against docs/shelf.md (the highest percent first).",
+      "mechanism_facts": [
+        "the sort compares pages read (`currentPage`), not progress as a share of the page count",
+        "books with different page counts are not ordered by percent",
+        "docs/shelf.md asks for the highest percent first"
+      ],
+      "wrong_mechanism_claims": [
+        "the sort is ascending"
+      ],
+      "anchors": [
+        {
+          "role": "entrypoint",
+          "path": "src/commands/index.js",
+          "lines": [
+            11,
+            11
+          ],
+          "contains": "list,"
+        },
+        {
+          "role": "site",
+          "path": "src/commands/list.js",
+          "lines": [
+            13,
+            13
+          ],
+          "contains": "books.sort((a, b) => b.currentPage - a.currentPage);"
+        },
+        {
+          "role": "rule",
+          "path": "docs/shelf.md",
+          "lines": [
+            21,
+            21
+          ],
+          "contains": "`shelf list --sort progress` lists books by progress, the highest percent first."
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "sort",
+          "anchor_ref": 1,
+          "why": "the sort key"
+        },
+        {
+          "id": "rule",
+          "anchor_ref": 2,
+          "why": "the rule"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "doc-drift"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "doc-drift",
+                "risk"
+              ],
+              "verdict": [
+                "candidate"
+              ]
+            }
+          },
+          {
+            "finding": {
+              "kind": [
+                "risk"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "E4",
+      "gating": true,
+      "gate_dimension": "model-comparison",
+      "category": "doc-drift",
+      "expect": "doc-drift",
+      "checks": [
+        "ARCH.3"
+      ],
+      "mechanism": "docs/shelf.md says `shelf progress` accepts a percentage such as `40%`, but the command converts the argument with `Number` and refuses anything that is not a whole number; no code accepts a percentage.",
+      "mechanism_facts": [
+        "docs/shelf.md says the page may be a percentage such as 40%",
+        "the command converts the argument with `Number` and refuses anything that is not a whole number",
+        "no code accepts or converts a percentage"
+      ],
+      "wrong_mechanism_claims": [
+        "the percentage is converted with the wrong rounding"
+      ],
+      "anchors": [
+        {
+          "role": "site",
+          "path": "docs/shelf.md",
+          "lines": [
+            16,
+            16
+          ],
+          "contains": "or a percentage such as `40%`."
+        },
+        {
+          "role": "sink",
+          "path": "src/commands/progress.js",
+          "lines": [
+            11,
+            12
+          ],
+          "contains": "const page = Number(pageArg);"
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "doc-claim",
+          "anchor_ref": 0,
+          "why": "the claim"
+        },
+        {
+          "id": "parse",
+          "anchor_ref": 1,
+          "why": "what the code accepts"
+        }
+      ],
+      "absent": [
+        {
+          "path_glob": "src/**",
+          "contains": "%'"
+        }
+      ],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "kind": [
+                "doc-drift",
+                "defect"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "finding": {
+              "kind": [
+                "doc-drift",
+                "defect",
+                "risk"
+              ],
+              "verdict": [
+                "candidate"
+              ]
+            }
+          }
+        ],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "EN1",
+      "gating": true,
+      "gate_dimension": "model-comparison",
+      "category": "refutation",
+      "expect": "no-defect",
+      "checks": [
+        "LOGIC.3"
+      ],
+      "mechanism": "`percent` divides by the page count, which looks like a division by zero, but every book enters the list through `add` or the import script, and both refuse a page count below 1. A candidate raised here must be rejected with that counterevidence.",
+      "mechanism_facts": [
+        "add refuses a page count below 1",
+        "the import script skips rows with a page count below 1",
+        "so the page count is at least 1 when `percent` divides by it"
+      ],
+      "wrong_mechanism_claims": [
+        "percent divides by zero for a book with no pages"
+      ],
+      "anchors": [
+        {
+          "role": "site",
+          "path": "src/progress.js",
+          "lines": [
+            7,
+            7
+          ],
+          "contains": "return Math.floor(readTimesHundred / pageCount);"
+        },
+        {
+          "role": "refutation",
+          "path": "src/commands/add.js",
+          "lines": [
+            7,
+            7
+          ],
+          "contains": "if (!Number.isInteger(pages) || pages < 1) throw new Error("
+        },
+        {
+          "role": "refutation",
+          "path": "scripts/import.js",
+          "lines": [
+            19,
+            19
+          ],
+          "contains": "if (!title || !Number.isInteger(pages) || pages < 1) {"
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "add-check",
+          "anchor_ref": 1,
+          "why": "add refuses"
+        },
+        {
+          "id": "import-check",
+          "anchor_ref": 2,
+          "why": "import refuses"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          },
+          {
+            "obligation": {
+              "status": [
+                "held"
+              ]
+            }
+          },
+          {
+            "not_raised": true
+          }
+        ],
+        "partial": [],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "kind": [
+                "defect"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": {
+        "counterevidence_anchor_refs": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "id": "EN2",
+      "gating": true,
+      "gate_dimension": "model-comparison",
+      "category": "sibling",
+      "expect": "no-defect",
+      "checks": [
+        "LOGIC.2"
+      ],
+      "mechanism": "`shelf finish` emits `book.finished` only after refusing a book whose `finishedAt` is set, and sets `finishedAt` before emitting, so it counts each book at most once.",
+      "mechanism_facts": [
+        "finish refuses a book whose `finishedAt` is set",
+        "it sets `finishedAt` before emitting",
+        "so finish emits at most once per book"
+      ],
+      "wrong_mechanism_claims": [
+        "finish counts a book again"
+      ],
+      "anchors": [
+        {
+          "role": "site",
+          "path": "src/commands/finish.js",
+          "lines": [
+            13,
+            13
+          ],
+          "contains": "bus.emit('book.finished', book);"
+        },
+        {
+          "role": "refutation",
+          "path": "src/commands/finish.js",
+          "lines": [
+            8,
+            8
+          ],
+          "contains": "if (book.finishedAt) throw new Error("
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "guard",
+          "anchor_ref": 1,
+          "why": "the refusal"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          },
+          {
+            "obligation": {
+              "status": [
+                "held"
+              ]
+            }
+          },
+          {
+            "not_raised": true
+          }
+        ],
+        "partial": [],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "kind": [
+                "defect"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": {
+        "counterevidence_anchor_refs": [
+          1
+        ]
+      }
+    }
+  ],
+  "census": {
+    "mechanisms": [
+      {
+        "id": "M-dispatch",
+        "kind": "entries",
+        "path": "src/commands/index.js",
+        "lines": [
+          12,
+          12
+        ],
+        "contains": "progress,",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-cli",
+        "kind": "scripts",
+        "path": "bin/shelf.js",
+        "lines": [
+          5,
+          5
+        ],
+        "contains": "run(process.argv.slice(2));",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-plugin-load",
+        "kind": "callers",
+        "path": "src/main.js",
+        "lines": [
+          11,
+          11
+        ],
+        "contains": "loadPlugins(bus, store);",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-listener-registration",
+        "kind": "events",
+        "path": "src/plugins/index.js",
+        "lines": [
+          5,
+          5
+        ],
+        "contains": "bus.on('book.finished', () => recordFinished(store));",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-listener-write",
+        "kind": "sites",
+        "path": "src/plugins/stats.js",
+        "lines": [
+          3,
+          3
+        ],
+        "contains": "store.data.stats.finishedCount += 1;",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-finish-emitter",
+        "kind": "events",
+        "path": "src/commands/finish.js",
+        "lines": [
+          13,
+          13
+        ],
+        "contains": "bus.emit('book.finished', book);",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-import",
+        "kind": "scripts",
+        "path": "scripts/import.js",
+        "lines": [
+          23,
+          23
+        ],
+        "contains": "store.addBook({ title, pages });",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      }
+    ],
+    "population": {
+      "finished_emitters": {
+        "count": 2,
+        "members": [
+          {
+            "path": "src/commands/finish.js",
+            "lines": [
+              13,
+              13
+            ],
+            "contains": "bus.emit('book.finished', book);"
+          },
+          {
+            "path": "src/commands/progress.js",
+            "lines": [
+              31,
+              31
+            ],
+            "contains": "bus.emit('book.finished', book);"
+          }
+        ]
+      }
+    }
+  },
+  "unplanned_allowances": [
+    {
+      "id": "A-save-in-place",
+      "checks": [
+        "RELIAB.1"
+      ],
+      "kind": "risk",
+      "note": "save() rewrites the JSON file in place; a crash during the write can leave a truncated list. Valid as a low risk.",
+      "anchors": [
+        {
+          "path": "src/store.js",
+          "lines": [
+            17,
+            17
+          ],
+          "contains": "fs.writeFileSync(FILE,"
+        }
+      ]
+    },
+    {
+      "id": "A-number-forms",
+      "checks": [
+        "CONTRACT.2"
+      ],
+      "kind": "risk",
+      "note": "Number() accepts forms such as 0x10, 1e2 or a blank argument (as 0) for ids, pages and page counts. Valid as a low risk.",
+      "anchors": [
+        {
+          "path": "src/commands/progress.js",
+          "lines": [
+            11,
+            11
+          ],
+          "contains": "const page = Number(pageArg);"
+        },
+        {
+          "path": "src/commands/add.js",
+          "lines": [
+            5,
+            5
+          ],
+          "contains": "const pages = Number(pagesArg);"
+        }
+      ]
+    },
+    {
+      "id": "A-csv-quotes",
+      "checks": [
+        "CONTRACT.3"
+      ],
+      "kind": "risk",
+      "note": "The import splits each row on its last comma and never unquotes fields, so a quoted title keeps its quotes. Valid as a low risk.",
+      "anchors": [
+        {
+          "path": "scripts/import.js",
+          "lines": [
+            16,
+            17
+          ],
+          "contains": "const comma = line.lastIndexOf(',');"
+        }
+      ]
+    },
+    {
+      "id": "A-refinish-date",
+      "checks": [
+        "LOGIC.2"
+      ],
+      "kind": "defect",
+      "note": "A progress update past the last page on a finished book overwrites its finishing day, against docs/shelf.md (a finished book records the day it was finished and stays finished). The same missing guard as the double count; valid as a separate finding.",
+      "anchors": [
+        {
+          "path": "src/commands/progress.js",
+          "lines": [
+            27,
+            27
+          ],
+          "contains": "book.finishedAt = today();"
+        }
+      ]
+    }
+  ]
+}

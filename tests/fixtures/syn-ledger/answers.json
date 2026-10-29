@@ -1,0 +1,1321 @@
+{
+  "schema": "nthr-fixture-answers@1",
+  "fixture": "syn-ledger",
+  "sealed": "Ground truth for scoring. Never copy it into a fixture, a prompt or a reviewer session.",
+  "scoring": {
+    "line_tolerance": 3,
+    "criteria": "tests/fixtures/README.md#evaluation-criteria",
+    "gate_credit": "full"
+  },
+  "heads": {
+    ".": "7dba24f69e4ad4ccb7feadcb9985887df84f580f",
+    "api": "038e0b110e88c585945faca4ed06c20dca975ed8",
+    "admin": "ce97543993168cff37c58b3348983ebbea8c0d64"
+  },
+  "runs": [
+    {
+      "id": "R1",
+      "mode": "task",
+      "ns": "experiments/ledger",
+      "changes": [
+        ".:HEAD~1..HEAD",
+        "api:HEAD~1..HEAD"
+      ],
+      "expected_size": "M",
+      "required_lead_model": "opus-high",
+      "expected_triggers": [
+        "authorization",
+        "money"
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "P1",
+      "gating": true,
+      "gate_dimension": "finding-accuracy",
+      "category": "authorization",
+      "expect": "defect",
+      "checks": [
+        "AUTHZ.2"
+      ],
+      "mechanism": "`createTransfer` checks ownership of the path account only: the body's `targetAccountId` is loaded with a plain `SELECT ... FOR UPDATE` and never compared with the session's customer, so a customer can move money into another customer's account.",
+      "mechanism_facts": [
+        "the target account comes from the request body (`targetAccountId`)",
+        "no ownership check runs on the target: no `requireAccountOwner` and no `customer_id` comparison",
+        "money is credited to the target with `postEntry`",
+        "this breaks docs/authorization.md (every account a request names belongs to the session's customer) and docs/ledger.md (transfers stay within one customer)"
+      ],
+      "wrong_mechanism_claims": [
+        "the path (source) account is not ownership-checked",
+        "the target lookup is open to SQL injection",
+        "the problem is only that a frozen target is accepted"
+      ],
+      "anchors": [
+        {
+          "role": "entrypoint",
+          "path": "api/src/routes/index.js",
+          "lines": [
+            12,
+            12
+          ],
+          "contains": "routes.post('/accounts/:accountId/transfers', createTransfer);"
+        },
+        {
+          "role": "propagation",
+          "path": "api/src/routes/transfers.js",
+          "lines": [
+            11,
+            11
+          ],
+          "contains": "const targetId = Number(req.body.targetAccountId);"
+        },
+        {
+          "role": "site",
+          "path": "api/src/routes/transfers.js",
+          "lines": [
+            15,
+            15
+          ],
+          "contains": "await conn.query('SELECT id, status FROM accounts WHERE id = ? FOR UPDATE', [targetId]);"
+        },
+        {
+          "role": "sink",
+          "path": "api/src/routes/transfers.js",
+          "lines": [
+            21,
+            21
+          ],
+          "contains": "await postEntry(conn, { accountId: targetId, amountCents, kind: 'transfer', reference });"
+        },
+        {
+          "role": "rule",
+          "path": "docs/authorization.md",
+          "lines": [
+            9,
+            9
+          ],
+          "contains": "Every account a request names must belong to the session's customer."
+        },
+        {
+          "role": "rule",
+          "path": "docs/ledger.md",
+          "lines": [
+            23,
+            23
+          ],
+          "contains": "Transfers between customers are not offered."
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "target-from-body",
+          "anchor_ref": 1,
+          "why": "the target is caller-controlled"
+        },
+        {
+          "id": "target-unchecked",
+          "anchor_ref": 2,
+          "why": "the only lookup of the target has no customer comparison"
+        },
+        {
+          "id": "credit-to-target",
+          "anchor_ref": 3,
+          "why": "money moves to the unchecked account"
+        },
+        {
+          "id": "rule",
+          "anchor_ref": 4,
+          "why": "the intent the code breaks"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "kind": [
+                "defect"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "risk"
+              ],
+              "verdict": [
+                "candidate"
+              ]
+            }
+          },
+          {
+            "finding": {
+              "kind": [
+                "risk"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "honest": [
+          {
+            "obligation": {
+              "status": [
+                "open"
+              ],
+              "open_reason": [
+                "verification",
+                "budget"
+              ]
+            }
+          }
+        ],
+        "disqualifying": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          },
+          {
+            "obligation": {
+              "status": [
+                "held"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": null
+    },
+    {
+      "id": "P2",
+      "gating": true,
+      "gate_dimension": "finding-accuracy",
+      "category": "db-integrity",
+      "expect": "defect",
+      "checks": [
+        "ATOMIC.1"
+      ],
+      "mechanism": "`createWithdrawal` posts the withdrawal, then on a negative balance returns a 422 result from the transaction callback instead of throwing; `withTransaction` commits on resolve, so the refused withdrawal stays recorded and the balance stays below zero.",
+      "mechanism_facts": [
+        "the entry is posted before the balance is checked",
+        "the refusal is returned from the transaction callback, not thrown",
+        "`withTransaction` commits when the callback resolves, so the entry and the negative balance persist",
+        "the client is told 422 although the money was taken: this breaks docs/ledger.md (Refusals; a withdrawal never goes below zero)"
+      ],
+      "wrong_mechanism_claims": [
+        "two concurrent withdrawals race (the account row is locked by `requireAccountOwner`)",
+        "the amount is not validated"
+      ],
+      "anchors": [
+        {
+          "role": "entrypoint",
+          "path": "api/src/routes/index.js",
+          "lines": [
+            14,
+            14
+          ],
+          "contains": "routes.post('/accounts/:accountId/withdrawals', createWithdrawal);"
+        },
+        {
+          "role": "sink",
+          "path": "api/src/routes/withdrawals.js",
+          "lines": [
+            15,
+            19
+          ],
+          "contains": "const entryId = await postEntry(conn, {"
+        },
+        {
+          "role": "site",
+          "path": "api/src/routes/withdrawals.js",
+          "lines": [
+            23,
+            23
+          ],
+          "contains": "return { status: 422, body: { error: 'insufficient funds' } };"
+        },
+        {
+          "role": "propagation",
+          "path": "api/src/db.js",
+          "lines": [
+            11,
+            11
+          ],
+          "contains": "await conn.commit();"
+        },
+        {
+          "role": "rule",
+          "path": "docs/ledger.md",
+          "lines": [
+            15,
+            15
+          ],
+          "contains": "A handler never returns an error response from inside a transaction callback."
+        },
+        {
+          "role": "rule",
+          "path": "docs/ledger.md",
+          "lines": [
+            31,
+            31
+          ],
+          "contains": "It never takes the balance below zero."
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "post-before-check",
+          "anchor_ref": 1,
+          "why": "the write happens first"
+        },
+        {
+          "id": "returned-refusal",
+          "anchor_ref": 2,
+          "why": "the refusal does not throw"
+        },
+        {
+          "id": "commit-on-resolve",
+          "anchor_ref": 3,
+          "why": "why the write survives"
+        },
+        {
+          "id": "rule",
+          "anchor_ref": 4,
+          "why": "the intent the code breaks"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "kind": [
+                "defect"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "risk"
+              ],
+              "verdict": [
+                "candidate"
+              ]
+            }
+          },
+          {
+            "finding": {
+              "kind": [
+                "risk"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "honest": [
+          {
+            "obligation": {
+              "status": [
+                "open"
+              ],
+              "open_reason": [
+                "verification",
+                "budget"
+              ]
+            }
+          }
+        ],
+        "disqualifying": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          },
+          {
+            "obligation": {
+              "status": [
+                "held"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": null
+    },
+    {
+      "id": "P3",
+      "gating": true,
+      "gate_dimension": "coverage",
+      "category": "indirect-path",
+      "expect": "census-only",
+      "checks": [
+        "ATOMIC.1"
+      ],
+      "mechanism": "A daily timer registered at start-up (`registerJobs` → `setInterval` → `creditInterest`) writes balances through `postEntry`; no route reaches it, so only a census of schedules and callers finds this ledger writer.",
+      "mechanism_facts": [
+        "the timer is registered in `api/src/loader.js`, called from `app.js`",
+        "the job writes ledger entries through `postEntry`",
+        "no HTTP route reaches it"
+      ],
+      "wrong_mechanism_claims": [
+        "the interest job breaks the ledger rules"
+      ],
+      "anchors": [
+        {
+          "role": "entrypoint",
+          "path": "api/src/app.js",
+          "lines": [
+            23,
+            23
+          ],
+          "contains": "registerJobs(pool);"
+        },
+        {
+          "role": "site",
+          "path": "api/src/loader.js",
+          "lines": [
+            6,
+            8
+          ],
+          "contains": "setInterval(() => {"
+        },
+        {
+          "role": "sink",
+          "path": "api/src/jobs/interest.js",
+          "lines": [
+            16,
+            16
+          ],
+          "contains": "postEntry(conn, { accountId: account.id, amountCents"
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "timer",
+          "anchor_ref": 1,
+          "why": "the activation mechanism"
+        },
+        {
+          "id": "writer",
+          "anchor_ref": 2,
+          "why": "the ledger write"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "census": {
+              "status": [
+                "classified"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "census": {
+              "status": [
+                "unknown"
+              ]
+            }
+          }
+        ],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "kind": [
+                "defect"
+              ],
+              "verdict": [
+                "confirmed"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": null
+    },
+    {
+      "id": "P4",
+      "gating": true,
+      "gate_dimension": "coverage",
+      "category": "db-integrity",
+      "expect": "census-only",
+      "checks": [
+        "DATA.1"
+      ],
+      "mechanism": "Migration 003 runs `UPDATE ledger_entries` to backfill the column it adds; docs/ledger.md allows a migration to backfill a column it adds, so this is a census item (migrations), not a breach of the append-only rule.",
+      "mechanism_facts": [
+        "003 adds `kind` and backfills it with `UPDATE ... WHERE kind IS NULL`",
+        "docs/ledger.md allows exactly this backfill"
+      ],
+      "wrong_mechanism_claims": [
+        "migration 003 breaks the rule that entries are never updated"
+      ],
+      "anchors": [
+        {
+          "role": "site",
+          "path": "api/migrations/003_entry_kind.sql",
+          "lines": [
+            3,
+            4
+          ],
+          "contains": "UPDATE ledger_entries SET kind = 'deposit' WHERE kind IS NULL AND amount_cents > 0;"
+        },
+        {
+          "role": "rule",
+          "path": "docs/ledger.md",
+          "lines": [
+            7,
+            7
+          ],
+          "contains": "A migration may backfill a column it adds."
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "backfill",
+          "anchor_ref": 0,
+          "why": "the DML in the migration"
+        },
+        {
+          "id": "allowance",
+          "anchor_ref": 1,
+          "why": "the rule that permits it"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "census": {
+              "status": [
+                "classified"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "census": {
+              "status": [
+                "unknown"
+              ]
+            }
+          }
+        ],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "kind": [
+                "defect"
+              ],
+              "verdict": [
+                "confirmed"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": {
+        "counterevidence_anchor_refs": [
+          1
+        ]
+      }
+    },
+    {
+      "id": "P5",
+      "gating": true,
+      "gate_dimension": "finding-accuracy",
+      "category": "documentation",
+      "expect": "doc-drift",
+      "checks": [
+        "ARCH.3"
+      ],
+      "mechanism": "docs/ledger.md (Corrections) says operators correct entries with `reverseEntry` in `api/src/ledger.js`, but no such function exists in the api repository.",
+      "mechanism_facts": [
+        "the document names `reverseEntry` in `api/src/ledger.js`",
+        "no definition of `reverseEntry` exists anywhere in `api/`"
+      ],
+      "wrong_mechanism_claims": [
+        "`reverseEntry` exists but is never called"
+      ],
+      "anchors": [
+        {
+          "role": "site",
+          "path": "docs/ledger.md",
+          "lines": [
+            39,
+            39
+          ],
+          "contains": "An operator corrects a wrong entry with `reverseEntry`"
+        },
+        {
+          "role": "sink",
+          "path": "api/src/ledger.js",
+          "lines": [
+            2,
+            2
+          ],
+          "contains": "export async function postEntry("
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "doc-claim",
+          "anchor_ref": 0,
+          "why": "the claim"
+        },
+        {
+          "id": "module-contents",
+          "anchor_ref": 1,
+          "why": "the module that should define it"
+        }
+      ],
+      "absent": [
+        {
+          "path_glob": "api/**",
+          "contains": "reverseEntry"
+        }
+      ],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "kind": [
+                "doc-drift",
+                "defect"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "finding": {
+              "kind": [
+                "doc-drift",
+                "defect",
+                "risk"
+              ],
+              "verdict": [
+                "candidate"
+              ]
+            }
+          }
+        ],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": null
+    },
+    {
+      "id": "P6",
+      "gating": true,
+      "gate_dimension": "finding-accuracy",
+      "category": "multi-repo",
+      "expect": "defect",
+      "checks": [
+        "MULTI-REPO.1"
+      ],
+      "mechanism": "The change raises `maxTransferCents` in `api/src/shared/limits.js` only; the admin copy `admin/src/shared/limits.js` keeps the old value, although docs/operations.md requires the two to stay identical (and `check-mirror.js` would fail).",
+      "mechanism_facts": [
+        "the change edits `maxTransferCents` in the api copy",
+        "the admin copy keeps 500000, so the copies differ by one line",
+        "docs/operations.md requires them to be identical"
+      ],
+      "wrong_mechanism_claims": [
+        "the new limit value itself is wrong"
+      ],
+      "anchors": [
+        {
+          "role": "site",
+          "path": "api/src/shared/limits.js",
+          "lines": [
+            2,
+            2
+          ],
+          "contains": "maxTransferCents: 1000000,"
+        },
+        {
+          "role": "sink",
+          "path": "admin/src/shared/limits.js",
+          "lines": [
+            2,
+            2
+          ],
+          "contains": "maxTransferCents: 500000,"
+        },
+        {
+          "role": "propagation",
+          "path": "admin/src/transfer-review.js",
+          "lines": [
+            7,
+            7
+          ],
+          "contains": "Math.floor(LIMITS.maxTransferCents / 2)"
+        },
+        {
+          "role": "rule",
+          "path": "docs/operations.md",
+          "lines": [
+            9,
+            9
+          ],
+          "contains": "must stay identical to it"
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "api-value",
+          "anchor_ref": 0,
+          "why": "the changed source"
+        },
+        {
+          "id": "admin-value",
+          "anchor_ref": 1,
+          "why": "the stale copy"
+        },
+        {
+          "id": "rule",
+          "anchor_ref": 3,
+          "why": "the mirror rule"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "doc-drift"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "finding": {
+              "kind": [
+                "defect",
+                "doc-drift",
+                "risk"
+              ],
+              "verdict": [
+                "candidate"
+              ]
+            }
+          },
+          {
+            "finding": {
+              "kind": [
+                "risk"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": null
+    },
+    {
+      "id": "N1",
+      "gating": true,
+      "gate_dimension": "false-positives",
+      "category": "negative-control",
+      "expect": "no-defect",
+      "checks": [
+        "AUTHZ.2"
+      ],
+      "mechanism": "`createSweep` checks ownership of both the path account and the body's `targetAccountId` with `requireAccountOwner`, and throws every refusal before any write. It has no authorization or atomicity defect.",
+      "mechanism_facts": [
+        "both account references pass `requireAccountOwner`",
+        "every refusal is thrown before the first `postEntry`"
+      ],
+      "wrong_mechanism_claims": [
+        "the sweep target is not ownership-checked",
+        "a sweep can exceed the transfer limit (docs/ledger.md, Sweeps: whatever its size)"
+      ],
+      "anchors": [
+        {
+          "role": "site",
+          "path": "api/src/routes/sweeps.js",
+          "lines": [
+            12,
+            12
+          ],
+          "contains": "const source = await requireAccountOwner(conn, req.session, sourceId);"
+        },
+        {
+          "role": "site",
+          "path": "api/src/routes/sweeps.js",
+          "lines": [
+            13,
+            13
+          ],
+          "contains": "await requireAccountOwner(conn, req.session, targetId);"
+        },
+        {
+          "role": "refutation",
+          "path": "api/src/guards.js",
+          "lines": [
+            10,
+            10
+          ],
+          "contains": "if (!account || account.customer_id !== session.customerId) throw notFound();"
+        },
+        {
+          "role": "rule",
+          "path": "docs/ledger.md",
+          "lines": [
+            27,
+            27
+          ],
+          "contains": "A sweep moves the whole balance of an account, whatever its size"
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "source-guard",
+          "anchor_ref": 0,
+          "why": "the source is checked"
+        },
+        {
+          "id": "target-guard",
+          "anchor_ref": 1,
+          "why": "the target is checked"
+        },
+        {
+          "id": "guard",
+          "anchor_ref": 2,
+          "why": "what the guard compares"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "obligation": {
+              "status": [
+                "held"
+              ]
+            }
+          }
+        ],
+        "partial": [
+          {
+            "obligation": {
+              "status": [
+                "open"
+              ]
+            }
+          }
+        ],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "kind": [
+                "defect"
+              ],
+              "verdict": [
+                "confirmed"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": {
+        "counterevidence_anchor_refs": [
+          0,
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "id": "N2",
+      "gating": true,
+      "gate_dimension": "false-positives",
+      "category": "refutation",
+      "expect": "no-defect",
+      "checks": [
+        "INJECT.1"
+      ],
+      "mechanism": "`getStatement` interpolates only module constants (`ENTRY_COLUMNS`, `ORDER`) into the SQL text and binds the account id and the clamped limit; there is no injection.",
+      "mechanism_facts": [
+        "the interpolated identifiers are module constants",
+        "every request value is a bound parameter",
+        "`limit` is parsed and clamped"
+      ],
+      "wrong_mechanism_claims": [
+        "SQL injection through the interpolated text"
+      ],
+      "anchors": [
+        {
+          "role": "site",
+          "path": "api/src/routes/statements.js",
+          "lines": [
+            21,
+            21
+          ],
+          "contains": "`SELECT ${ENTRY_COLUMNS.join"
+        },
+        {
+          "role": "refutation",
+          "path": "api/src/routes/statements.js",
+          "lines": [
+            5,
+            6
+          ],
+          "contains": "const ENTRY_COLUMNS = ['id'"
+        },
+        {
+          "role": "refutation",
+          "path": "api/src/routes/statements.js",
+          "lines": [
+            22,
+            22
+          ],
+          "contains": "[accountId, limit],"
+        }
+      ],
+      "required_evidence": [
+        {
+          "id": "constants",
+          "anchor_ref": 1,
+          "why": "what is interpolated"
+        },
+        {
+          "id": "bound",
+          "anchor_ref": 2,
+          "why": "what is bound"
+        }
+      ],
+      "absent": [],
+      "outcomes": {
+        "full": [
+          {
+            "finding": {
+              "verdict": [
+                "rejected"
+              ]
+            }
+          },
+          {
+            "obligation": {
+              "status": [
+                "held"
+              ]
+            }
+          },
+          {
+            "not_raised": true
+          }
+        ],
+        "partial": [],
+        "honest": [],
+        "disqualifying": [
+          {
+            "finding": {
+              "kind": [
+                "defect"
+              ],
+              "verdict": [
+                "confirmed",
+                "needs_validation"
+              ]
+            }
+          }
+        ]
+      },
+      "refutation": {
+        "counterevidence_anchor_refs": [
+          1,
+          2
+        ]
+      }
+    }
+  ],
+  "census": {
+    "mechanisms": [
+      {
+        "id": "M-routes",
+        "kind": "entries",
+        "path": "api/src/routes/index.js",
+        "lines": [
+          10,
+          14
+        ],
+        "contains": "routes.get('/accounts/:accountId', getAccount);",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-session-gate",
+        "kind": "entries",
+        "path": "api/src/app.js",
+        "lines": [
+          12,
+          12
+        ],
+        "contains": "req.session = requireSession(req);",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-timer",
+        "kind": "schedules",
+        "path": "api/src/loader.js",
+        "lines": [
+          6,
+          6
+        ],
+        "contains": "setInterval(() => {",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-interest-writer",
+        "kind": "callers",
+        "path": "api/src/jobs/interest.js",
+        "lines": [
+          16,
+          16
+        ],
+        "contains": "postEntry(conn, { accountId: account.id, amountCents",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-migration-003",
+        "kind": "migrations",
+        "path": "api/migrations/003_entry_kind.sql",
+        "lines": [
+          3,
+          3
+        ],
+        "contains": "UPDATE ledger_entries SET kind = 'deposit'",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-mirror",
+        "kind": "mirrors",
+        "path": "admin/src/shared/limits.js",
+        "lines": [
+          2,
+          2
+        ],
+        "contains": "maxTransferCents: 500000,",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-mirror-check",
+        "kind": "scripts",
+        "path": "admin/scripts/check-mirror.js",
+        "lines": [
+          11,
+          11
+        ],
+        "contains": "if (source !== mirror) {",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      },
+      {
+        "id": "M-admin-reader",
+        "kind": "sites",
+        "path": "admin/src/transfer-review.js",
+        "lines": [
+          6,
+          6
+        ],
+        "contains": "FROM ledger_entries WHERE kind = 'transfer'",
+        "accept_status": [
+          "classified",
+          "unknown"
+        ],
+        "accept_via": [
+          "census-item",
+          "obligation-evidence",
+          "assumption"
+        ]
+      }
+    ],
+    "population": {
+      "ledger_writers": {
+        "count": 4,
+        "members": [
+          {
+            "path": "api/src/routes/transfers.js",
+            "lines": [
+              20,
+              20
+            ],
+            "contains": "await postEntry(conn, { accountId: sourceId"
+          },
+          {
+            "path": "api/src/routes/sweeps.js",
+            "lines": [
+              18,
+              18
+            ],
+            "contains": "await postEntry(conn, { accountId: sourceId"
+          },
+          {
+            "path": "api/src/routes/withdrawals.js",
+            "lines": [
+              15,
+              15
+            ],
+            "contains": "const entryId = await postEntry(conn, {"
+          },
+          {
+            "path": "api/src/jobs/interest.js",
+            "lines": [
+              16,
+              16
+            ],
+            "contains": "postEntry(conn, { accountId: account.id, amountCents"
+          }
+        ]
+      },
+      "routes": {
+        "count": 5,
+        "members": [
+          {
+            "path": "api/src/routes/index.js",
+            "lines": [
+              10,
+              10
+            ],
+            "contains": "routes.get('/accounts/:accountId', getAccount);"
+          },
+          {
+            "path": "api/src/routes/index.js",
+            "lines": [
+              11,
+              11
+            ],
+            "contains": "routes.get('/accounts/:accountId/statements', getStatement);"
+          },
+          {
+            "path": "api/src/routes/index.js",
+            "lines": [
+              12,
+              12
+            ],
+            "contains": "routes.post('/accounts/:accountId/transfers', createTransfer);"
+          },
+          {
+            "path": "api/src/routes/index.js",
+            "lines": [
+              13,
+              13
+            ],
+            "contains": "routes.post('/accounts/:accountId/sweeps', createSweep);"
+          },
+          {
+            "path": "api/src/routes/index.js",
+            "lines": [
+              14,
+              14
+            ],
+            "contains": "routes.post('/accounts/:accountId/withdrawals', createWithdrawal);"
+          }
+        ]
+      }
+    }
+  },
+  "unplanned_allowances": [
+    {
+      "id": "A-lock-order",
+      "checks": [
+        "ATOMIC.4"
+      ],
+      "kind": "risk",
+      "note": "Transfers and sweeps lock the source row, then the target row; two opposite requests can deadlock (MySQL rolls one back). Valid as a risk, not a false positive.",
+      "anchors": [
+        {
+          "path": "api/src/routes/sweeps.js",
+          "lines": [
+            13,
+            13
+          ],
+          "contains": "await requireAccountOwner(conn, req.session, targetId);"
+        }
+      ]
+    },
+    {
+      "id": "A-interest-stale-balance",
+      "checks": [
+        "ATOMIC.3"
+      ],
+      "kind": "risk",
+      "note": "Interest is computed from a balance read outside the posting transaction. Valid as a low risk.",
+      "anchors": [
+        {
+          "path": "api/src/jobs/interest.js",
+          "lines": [
+            12,
+            12
+          ],
+          "contains": "const amountCents = Math.floor(account.balance_cents * DAILY_RATE);"
+        }
+      ]
+    },
+    {
+      "id": "A-self-transfer",
+      "checks": [
+        "LOGIC.1"
+      ],
+      "kind": "risk",
+      "note": "A transfer or sweep to the same account posts two entries with one reference; the unique key rejects the second, so the request fails with a server error (rolled back, no money moves) instead of a 4xx. Valid as a low risk.",
+      "anchors": [
+        {
+          "path": "api/src/routes/transfers.js",
+          "lines": [
+            20,
+            20
+          ],
+          "contains": "await postEntry(conn, { accountId: sourceId"
+        },
+        {
+          "path": "api/src/routes/sweeps.js",
+          "lines": [
+            18,
+            18
+          ],
+          "contains": "await postEntry(conn, { accountId: sourceId"
+        }
+      ]
+    },
+    {
+      "id": "A-read-lock",
+      "checks": [
+        "PERF"
+      ],
+      "kind": "risk",
+      "note": "Statements and balance reads lock the account row (`FOR UPDATE`). Valid as a low risk.",
+      "anchors": [
+        {
+          "path": "api/src/guards.js",
+          "lines": [
+            6,
+            6
+          ],
+          "contains": "FROM accounts WHERE id = ? FOR UPDATE"
+        }
+      ]
+    }
+  ]
+}

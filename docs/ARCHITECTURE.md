@@ -11,7 +11,7 @@ This document owns how nth-review's parts fit together and where each one runs. 
 | Review skill `/nth-review` | the 27 runtime files, copied into `<P>/.claude/skills/nth-review/` by Enable | Manual only. Runs a review in that project |
 | Helper `nthr.mjs` | `scripts/nthr.mjs` and `scripts/lib/*.mjs` in the copy; plain Node.js, no dependencies | Everything deterministic: snapshots, packs, records, `check`, `close`, freshness, reports, `status`, `decide` |
 | State file | `<P>/.claude/nth-dev-kit-hooks/review.state.json` | Records which installed files nth-review owns, by sha256 ([INSTALL.md, Runtime files and ownership](../INSTALL.md#runtime-files-and-ownership)) |
-| Review records | `<P>/.nth-review/` | One folder per run: `records.json`, packs and `report.md`; plus decisions and debt per namespace |
+| Review records | `<P>/.nth-review/` | One folder per run under a namespace: `records.json`, packs and `report.md`; plus decisions and debt per namespace. Only the helper writes here, and only these layouts are read; a pre-release top-level `runs/`, `records/` or `census/` folder is ignored and is never a base ([reference/protocol.md](../reference/protocol.md) §1a). It is the project's review record, not nth-review development material ([DEVELOPMENT.md](DEVELOPMENT.md#development-research-outside-this-repository)) |
 
 The folder name `nth-dev-kit-hooks` is historical, from nth-review's time inside the nth-dev-kit project. It is kept so existing projects stay readable, and it holds provenance only.
 
